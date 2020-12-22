@@ -1,3 +1,5 @@
+#
+*
 ######
 !Makefile
 !*.cpp
@@ -5,7 +7,6 @@
 !*.h
 # Prerequisites
 *.d
-*.exe
 # Object files
 *.o
 *.ko
