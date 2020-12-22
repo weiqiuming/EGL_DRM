@@ -34,6 +34,7 @@ EGLContext egl_context_;
 EGLSurface egl_surface_;
 EGLConfig egl_config_;
 bool crtc_set_=false;
+bool need_init = true;
 
 int init_drm()
 {
@@ -114,7 +115,7 @@ int init_drm()
         return false;
     }
 }
-int init_gl()
+int init_gl_context()
 {
 	dev_ = gbm_create_device(fd_);
     if (!dev_) {
@@ -167,6 +168,9 @@ int init_gl()
         return false;
     }
 
+}
+int init_egl_surface()
+{
     const EGLint config_attribs[] = {
         EGL_RED_SIZE, 1,
         EGL_GREEN_SIZE, 1,
@@ -309,19 +313,41 @@ void flip()
     gbm_surface_release_buffer(surface_, bo_);
     bo_ = next;
 }
-int gldraw()
+int gl_draw_surface()
 {
+    if(need_init == true)
+    {
+        init_egl_surface();
+        need_init = false;
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearDepthf(0.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+
+    //draw
+    glClear(GL_COLOR_BUFFER_BIT);
+    //scanout
     eglSwapBuffers(egl_display_, egl_surface_);
     flip();
 }
 int main()
 {
     init_drm();
-    init_gl();
+    init_gl_context();
 
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClearDepthf(1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    unsigned int draw_num = 400;
+    unsigned int i = 0;
 
-    gldraw();
+    while(i<draw_num)
+    {
+        gl_draw_surface();
+        if (i>draw_num/2)
+        {
+            glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
+        else{
+            glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
+        }
+        i++;
+    }
 }
