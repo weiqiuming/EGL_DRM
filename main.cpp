@@ -4,17 +4,31 @@
 #include <drm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
-#include "egl.h"
-#include "eglext.h"
 #include "gl2.h"
+#include "egl.h"
 #include <string>
 #include <cstring>
+
+//#define EGL_EGLEXT_PROTOTYPES 1
+//#define GL_GLEXT_PROTOTYPES 1
+#define GL_OES_EGL_image 1
+#define GL_GLEXT_PROTOTYPES 1
+#define EGL_KHR_image 1
+#define EGL_EGLEXT_PROTOTYPES 1
+#include "gl2ext.h"
+#include "eglext.h"
 
 struct DRMFBState
 {
     int fd;
     gbm_bo* bo;
     uint32_t fb_id;
+};
+struct Image_OES_FBO
+{
+    gbm_bo* bo;
+    uint32_t fb_id;
+    GLuint fbo;
 };
 drmModeConnector* connector_;
 drmModeEncoder* encoder_;
@@ -35,6 +49,9 @@ EGLSurface egl_surface_;
 EGLConfig egl_config_;
 bool crtc_set_=false;
 bool need_init = true;
+
+//fbo
+Image_OES_FBO oes_fbo[2];
 
 int init_drm()
 {
@@ -318,6 +335,66 @@ int gl_draw_surface()
     if(need_init == true)
     {
         init_egl_surface();
+        need_init = false;
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearDepthf(0.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+
+    //draw
+    glClear(GL_COLOR_BUFFER_BIT);
+    //scanout
+    eglSwapBuffers(egl_display_, egl_surface_);
+    flip();
+
+    return 1;
+}
+int init_egl_fbo()
+{
+    //create fbo
+    for (size_t i =0;i<2;i++)
+    {
+        oes_fbo[i].bo  = gbm_bo_create(dev_, mode_->hdisplay, mode_->vdisplay,
+                                  GBM_FORMAT_XRGB8888,
+                                  GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+        EGLImageKHR image = eglCreateImageKHR(egl_display_,
+                                EGL_NO_CONTEXT,
+                                EGL_NATIVE_PIXMAP_KHR, oes_fbo[i].bo, NULL);
+        if (image == EGL_NO_IMAGE_KHR) {
+          printf("egl no image khr\n");
+        }
+
+        eglMakeCurrent(egl_display_, EGL_NO_SURFACE,EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (!eglMakeCurrent(egl_display_, EGL_NO_SURFACE,EGL_NO_SURFACE, egl_context_)) {
+            printf("eglMakeCurrent failed with error: 0x%x\n", eglGetError());
+            return false;
+        }
+
+        GLuint texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  
+        glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glGenFramebuffers(1,&oes_fbo[i].fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, oes_fbo[i].fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                             GL_TEXTURE_2D, texture, 0);
+        int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            printf("glCheckFramebufferStatus failed with error: 0x%x\n", eglGetError());
+            return false;
+        }
+    }
+}
+void gl_draw_fbo()
+{
+    if(need_init == true)
+    {
+        init_egl_fbo();
         need_init = false;
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClearDepthf(0.0f);
