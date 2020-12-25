@@ -4,17 +4,14 @@
 #include <drm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
-#include "gl2.h"
-#include "egl.h"
 #include <string>
 #include <cstring>
 
-//#define EGL_EGLEXT_PROTOTYPES 1
-//#define GL_GLEXT_PROTOTYPES 1
-#define GL_OES_EGL_image 1
-#define GL_GLEXT_PROTOTYPES 1
-#define EGL_KHR_image 1
-#define EGL_EGLEXT_PROTOTYPES 1
+//#include "epoxy/gl.h"
+//#include "epoxy/egl.h"
+
+#include "gl2.h"
+#include "egl.h"
 #include "gl2ext.h"
 #include "eglext.h"
 
@@ -52,6 +49,7 @@ bool need_init = true;
 
 //fbo
 Image_OES_FBO oes_fbo[2];
+unsigned char cur_fbo = 0;
 
 int init_drm()
 {
@@ -349,8 +347,26 @@ int gl_draw_surface()
 
     return 1;
 }
+
+static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
+
 int init_egl_fbo()
 {
+    glEGLImageTargetTexture2DOES = 
+        (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
+    eglCreateImageKHR = 
+        (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
+    if (!glEGLImageTargetTexture2DOES||!eglCreateImageKHR)
+    {
+        printf("get oes and image_khr erro\n");
+    }
+
+    eglMakeCurrent(egl_display_, EGL_NO_SURFACE,EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (!eglMakeCurrent(egl_display_, EGL_NO_SURFACE,EGL_NO_SURFACE, egl_context_)) {
+        printf("eglMakeCurrent failed with error: 0x%x\n", eglGetError());
+        return false;
+    }
     //create fbo
     for (size_t i =0;i<2;i++)
     {
@@ -364,18 +380,11 @@ int init_egl_fbo()
           printf("egl no image khr\n");
         }
 
-        eglMakeCurrent(egl_display_, EGL_NO_SURFACE,EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (!eglMakeCurrent(egl_display_, EGL_NO_SURFACE,EGL_NO_SURFACE, egl_context_)) {
-            printf("eglMakeCurrent failed with error: 0x%x\n", eglGetError());
-            return false;
-        }
-
         GLuint texture;
         glGenTextures(1, &texture);
         glBindTexture(GL_TEXTURE_2D, texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  
         glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
         glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -386,8 +395,74 @@ int init_egl_fbo()
         int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             printf("glCheckFramebufferStatus failed with error: 0x%x\n", eglGetError());
-            return false;
+            return 0;
         }
+        glBindFramebuffer(GL_FRAMEBUFFER,0);
+
+        unsigned int width = gbm_bo_get_width(oes_fbo[i].bo);
+        unsigned int height = gbm_bo_get_height(oes_fbo[i].bo);
+        unsigned int stride = gbm_bo_get_stride(oes_fbo[i].bo);
+        unsigned int handle = gbm_bo_get_handle(oes_fbo[i].bo).u32;
+        unsigned int fb_id(0);
+        status = drmModeAddFB(fd_, width, height, 24, 32, stride, handle, &fb_id);
+        if (status < 0) {
+            printf("Failed to create FB: %d\n", status);
+            return 0;
+        }
+        oes_fbo[i].fb_id = fb_id;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER,oes_fbo[cur_fbo].fbo);
+}
+int swapfbo()
+{
+    glFlush();
+    glBindFramebuffer(GL_FRAMEBUFFER,0);
+    cur_fbo = (~cur_fbo) & 1;
+    glBindFramebuffer(GL_FRAMEBUFFER,oes_fbo[cur_fbo].fbo);
+}
+void scanout()
+{
+    unsigned char scanout_fbo = (~cur_fbo) & 1;;
+    unsigned int waiting(1);
+
+    if (!crtc_set_) {
+        int status = drmModeSetCrtc(fd_, encoder_->crtc_id, oes_fbo[scanout_fbo].fb_id, 0, 0,
+                                    &connector_->connector_id, 1, mode_);
+        if (status >= 0) {
+            crtc_set_ = true;
+        }
+        else {
+            printf("Failed to set crtc: %d\n", status);
+        }
+        return;
+    }
+
+    int status = drmModePageFlip(fd_, encoder_->crtc_id, oes_fbo[scanout_fbo].fb_id,
+                                 DRM_MODE_PAGE_FLIP_EVENT, &waiting);
+    if (status < 0) {
+        printf("Failed to enqueue page flip: %d\n", status);
+        return;
+    }
+
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(fd_, &fds);
+    drmEventContext evCtx;
+    memset(&evCtx, 0, sizeof(evCtx));
+    evCtx.version = 2;
+    evCtx.page_flip_handler = page_flip_handler;
+
+    while (waiting) {
+        status = select(fd_ + 1, &fds, 0, 0, 0);
+        if (status < 0) {
+            // Most of the time, select() will return an error because the
+            // user pressed Ctrl-C.  So, only print out a message in debug
+            // mode, and just check for the likely condition and release
+            // the current buffer object before getting out.
+            printf("Error in select\n");
+            return;
+        }
+        drmHandleEvent(fd_, &evCtx);
     }
 }
 void gl_draw_fbo()
@@ -404,20 +479,21 @@ void gl_draw_fbo()
     //draw
     glClear(GL_COLOR_BUFFER_BIT);
     //scanout
-    eglSwapBuffers(egl_display_, egl_surface_);
-    flip();
+    swapfbo();
+    scanout();
 }
 int main()
 {
     init_drm();
     init_gl_context();
 
-    unsigned int draw_num = 400;
+    unsigned int draw_num = 40;
     unsigned int i = 0;
 
     while(i<draw_num)
     {
-        gl_draw_surface();
+        //gl_draw_surface();
+        gl_draw_fbo();
         if (i>draw_num/2)
         {
             glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
