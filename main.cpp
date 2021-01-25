@@ -139,7 +139,7 @@ int init_gl_context()
     }
 
     surface_ = gbm_surface_create(dev_, mode_->hdisplay, mode_->vdisplay,
-                                  GBM_FORMAT_XRGB8888,
+                                  GBM_FORMAT_ABGR8888,
                                   GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
     if (!surface_) {
         printf("Failed to create GBM surface\n");
@@ -171,7 +171,7 @@ int init_gl_context()
         EGL_CONTEXT_CLIENT_VERSION, 2,
         EGL_NONE
     };
-    if (!eglBindAPI(EGL_OPENGL_ES_API)) {
+    if (!eglBindAPI(EGL_OPENGL_API)) {
     	printf("Failed to bind either EGL_OPENGL_ES_API APIs.\n");
         return false;
     }
@@ -341,6 +341,10 @@ int gl_draw_surface()
 
     //draw
     glClear(GL_COLOR_BUFFER_BIT);
+	GLfloat probe[4];
+	glReadPixels(82, 4, 1, 1, GL_RGBA, GL_FLOAT, probe);
+	printf("%f %f %f %f\n",probe[0],probe[1],probe[2],probe[3]);
+
     //scanout
     eglSwapBuffers(egl_display_, egl_surface_);
     flip();
@@ -371,7 +375,7 @@ int init_egl_fbo()
     for (size_t i =0;i<2;i++)
     {
         oes_fbo[i].bo  = gbm_bo_create(dev_, mode_->hdisplay, mode_->vdisplay,
-                                  GBM_FORMAT_XRGB8888,
+                                  GBM_FORMAT_ABGR8888,
                                   GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
         EGLImageKHR image = eglCreateImageKHR(egl_display_,
                                 EGL_NO_CONTEXT,
@@ -478,6 +482,9 @@ void gl_draw_fbo()
 
     //draw
     glClear(GL_COLOR_BUFFER_BIT);
+	GLfloat probe[4];
+	glReadPixels(82, 4, 1, 1, GL_RGBA, GL_FLOAT, probe);
+	printf("%f %f %f %f\n",probe[0],probe[1],probe[2],probe[3]);
     //scanout
     swapfbo();
     scanout();
@@ -487,13 +494,13 @@ int main()
     init_drm();
     init_gl_context();
 
-    unsigned int draw_num = 40;
+    unsigned int draw_num = 4;
     unsigned int i = 0;
 
     while(i<draw_num)
     {
-        //gl_draw_surface();
-        gl_draw_fbo();
+        gl_draw_surface();
+    //    gl_draw_fbo();
         if (i>draw_num/2)
         {
             glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
@@ -501,6 +508,7 @@ int main()
         else{
             glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
         }
+        glClearColor(0.2f, 0.4f, 0.5f, 1.0f);
         i++;
     }
 }
