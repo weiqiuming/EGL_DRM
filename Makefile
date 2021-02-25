@@ -1,7 +1,7 @@
-CC = /usr/bin/g++
-
-SRCS = $(wildcard *.cpp */*.cpp)
-OBJS = $(patsubst %cpp, %o, $(SRCS))
+CC = /usr/bin/gcc
+CGLAGS=-Wall -O2 -g -std=c99
+SRCS = $(wildcard *.c */*.c)
+OBJS = $(patsubst %c, %o, $(SRCS))
 
 
 prefix=/home/loongson/backup_wqm
@@ -10,7 +10,7 @@ libdir=${prefix}/lib
 includedir=${prefix}/include
 
 INCLUDE=-I${includedir} -I${includedir}/libdrm -I${includedir}/EGL -I${includedir}/GLES2
-LIBS =-L${libdir} -ldrm -lpthread -ldl -pthread -lm -lgbm -lEGL -lGLESv2 -lOSMesa 
+LIBS =-L${libdir} -ldrm -lpthread -ldl -pthread -lm -lgbm -lEGL -lGLESv2 -lOSMesa
 
 TARGET = main
 
@@ -21,8 +21,8 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LIBS)
 
-%.o:%.cpp
-	$(CC) -c $^ $(INCLUDE)
+%.o:%.c
+	$(CC) $(CGLAGS) $(INCLUDE) -o $@ -c $<
 clean:
 	rm -f $(OBJS) $(TARGET)
 run:clean all
