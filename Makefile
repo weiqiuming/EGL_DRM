@@ -4,7 +4,7 @@ SRCS = $(wildcard *.cpp */*.cpp)
 OBJS = $(patsubst %cpp, %o, $(SRCS))
 
 
-prefix=/home/loongson/backup
+prefix=/home/loongson/backup_wqm
 #prefix=/home/wqm/backup
 libdir=${prefix}/lib
 includedir=${prefix}/include
