@@ -10,10 +10,10 @@
 //#include "epoxy/gl.h"
 //#include "epoxy/egl.h"
 
-#include "egl.h"
-#include "eglext.h"
-#include "gl2.h"
-#include "gl2ext.h"
+#include "EGL/egl.h"
+#include "EGL/eglext.h"
+#include "GLES2/gl2.h"
+#include "GLES2/gl2ext.h"
 
 struct DRMFBState {
   int fd;
