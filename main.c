@@ -10,10 +10,10 @@
 //#include "epoxy/gl.h"
 //#include "epoxy/egl.h"
 
-#include "egl.h"
-#include "eglext.h"
-#include "gl2.h"
-#include "gl2ext.h"
+#include "EGL/egl.h"
+#include "EGL/eglext.h"
+#include "GL/gl.h"
+#include "GL/glext.h"
 
 struct DRMFBState {
   int fd;
@@ -155,8 +155,8 @@ int init_gl_context() {
   }
   static const EGLint context_attribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2,
                                            EGL_NONE};
-  if (!eglBindAPI(EGL_OPENGL_ES_API)) {
-    printf("Failed to bind either EGL_OPENGL_ES_API APIs.\n");
+  if (!eglBindAPI(EGL_OPENGL_API)) {
+    printf("Failed to bind either EGL_OPENGL_API APIs.\n");
     return false;
   }
   egl_context_ =
@@ -335,7 +335,7 @@ void gl_draw_fbo() {
     init_egl_fbo();
     need_init = false;
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClearDepthf(0.0f);
+    glClearDepth(0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   }
 
